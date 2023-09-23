@@ -15,7 +15,7 @@ begin
     begin
         if (Reset = '1') then
             counter := "00000"; -- valor inicial
-            RCO <= '0'; -- precisa? -----------------------------------------------------------
+            RCO <= '0';
         elsif rising_edge(Clock) then
             counter := counter + 1;
             if (counter = "10000") then RCO <= '1'; else RCO <= '0';
