@@ -3,6 +3,7 @@
 --! @brief a cool as fuck N-bit multiplexer
 --! @author João P. Calazans (joao.calazans@usp.br)
 --! @date 2023-09-23
+-- Available on EDA Playground: https://www.edaplayground.com/x/TZj4
 -------------------------------------------------------
 -- A SERIOUS BRIEF: this mux has N as it total bits capacity,
 -- You have two IN-BITS (A and B) and two OUT-SIGNALS (X and Y),
