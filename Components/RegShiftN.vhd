@@ -3,6 +3,7 @@
 --! @brief https://www.youtube.com/watch?v=-62YbRZqxjs&ab
 --! @author João P. Calazans (joao.calazans@usp.br)
 --! @date 2023-09-18
+-- Avaiable on EDA PLayground throw: https://www.edaplayground.com/x/WpQN
 -------------------------------------------------------
 library ieee;
 use ieee.numeric_bit.rising_edge;
