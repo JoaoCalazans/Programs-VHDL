@@ -1,0 +1,610 @@
+------------------------------------------------------------
+--! @file Projeto 2.vhd
+--! @brief Star Trek PANIC
+--! @author João Pèdro Dionizio Calazans (13673086)
+--! @date 2023-06-23
+------------------------------------------------------------
+
+library ieee;
+use ieee.numeric_bit.rising_edge;
+use ieee.numeric_bit.all;
+----------------------------------------------------------------------------------------------------------------
+-- Registrador de 8 bits capaz de somar seu conteúdo à entrada. Satura-se em 0-255
+entity adderSaturated8 is
+  port (
+    clock, set, reset: in bit;					-- Controle global: clock, set e reset (síncrono)
+	enableAdd: 	  in bit;						-- Se 1, conteúdo do registrador é somado a parallel_add (síncrono)
+    parallel_add: in  bit_vector(8 downto 0);   -- Entrada a ser somada (inteiro COM sinal): -256 a +255
+    parallel_out: out bit_vector(7 downto 0)	-- Conteúdo do registrador: 8 bits, representando 0 a 255
+  );
+end entity;
+
+architecture arch of adderSaturated8 is
+  signal internal: signed(9 downto 0); -- 10 bits com sinal: captura valores entre -512 e 511 na soma
+  signal extIn: signed(9 downto 0); -- entrada convertida para 10 bits
+  signal preOut: bit_vector(9 downto 0);  -- pré-saida: internal convertido para bit_vector
+begin
+  extIn <= signed(parallel_add(8) and parallel_add); -- extensão de sinal
+  
+  process(clock, reset)
+  begin
+    if (rising_edge(clock)) then
+      if set = '1' then						  -- set síncrono
+         internal <= (9|8 => '0', others=>'1'); -- Carrega 255 no registrador
+	  elsif reset = '1' then				 -- reset síncrono
+		 internal <= (others=>'0'); 		 -- Carrega 0s no registrador
+	  elsif enableAdd = '1' then			 -- add síncrono
+         -- Resultado fica na faixa entre -256 (se parallel_add = -256 e internal = 0) 
+         -- e 510 (se parallel_add = 255 e internal = 255)
+         if    (internal + extIn < 0)   then internal <= "0000000000"; -- negativo: satura em 0
+         elsif (internal + extIn > 255) then internal <= "0011111111"; -- positivo 255+: satura em 255
+         else                                internal <= internal + extIn; -- entre 0 e 255
+         end if; 
+      end if;
+    end if;
+  end process;
+  
+  preOut <= bit_vector(internal);
+  parallel_out <= preOut(7 downto 0);
+end architecture;
+
+---------------------------------------------------------------------
+library ieee;
+use ieee.numeric_bit.all;
+
+-- Registrador de 8 bits capaz de subtrair a entrada de seu conteúdo. Satura-se em 0
+entity decrementerSaturated8 is
+  port (
+    clock, set, reset: in bit;					-- Controle global: clock, set e reset (síncrono)
+	enableSub: 	  in bit;						-- Se 1, conteúdo do registrador é subtraído de parallel_sub (síncrono)
+    parallel_sub: in  bit_vector(7 downto 0);   -- Entrada a ser substraida (inteiro SEM sinal): 0 a 255
+    parallel_out: out bit_vector(7 downto 0)	-- Conteúdo do registrador: 8 bits, representando 0 a 255
+  );
+end entity;
+
+architecture arch of decrementerSaturated8 is
+  signal internal: signed(8 downto 0); -- 9 bits com sinal: captura valores entre -256 e 255 na substração
+  signal convertedIn: signed(8 downto 0); -- entrada convertida para 9 bits
+  signal preOut: bit_vector(8 downto 0);  -- pré-saida: internal convertido para bit_vector
+begin
+  convertedIn <= signed('0' and parallel_sub); -- extensão de sinal: número positivo
+  
+  process(clock, reset)
+  begin
+    if (rising_edge(clock)) then
+      if set = '1' then						  -- set síncrono
+         internal <= (8 => '0', others=>'1'); -- Carrega 255 no registrador
+	  elsif reset = '1' then				  -- reset síncrono
+		 internal <= (others=>'0'); 		  -- Carrega 0s no registrador
+	  elsif enableSub = '1' then			  -- sub síncrono
+         internal <= internal - convertedIn;
+      end if;
+    end if;
+  end process;
+  
+  preOut <= bit_vector(internal);
+  parallel_out <= "00000000" when preOut(8) = '1' else --valores negativos: saturar em 0
+  				  preout(7 downto 0);
+end architecture;
+-------------------------------------------------------------------------------------------------------
+
+library ieee;
+use ieee.numeric_bit.all;
+
+entity StartTrekAssault is
+	port (
+		clock, reset: in bit; -- sinais de controle globais
+		damage: in bit_vector(7 downto 0); -- Entrada de dados: dano
+		shield: out bit_vector(7 downto 0); -- Saída: shield atual
+		health: out bit_vector(7 downto 0); -- Saída: health atual
+		turn: out bit_vector(4 downto 0); -- Saída: rodada atual
+		WL: out bit_vector(1 downto 0) -- Saída: vitória e/ou derrota
+	);
+end entity;
+
+architecture behavioral of StartTrekAssault is
+  type state_type is (RESTART,START,GAME,ENTERPRISE); -- Control Unit states
+  signal present_state, next_state : state_type; -- C. Unit signals
+  -- aux variables ----------------------------------------------------------------------------
+  signal regen: bit_vector(4 downto 0); -- shields regeneration
+  signal reg_shield, reg_health: bit_vector(7 downto 0); -- registers
+  signal turn_out : signed(4 downto 0); -- current turn calculos
+  signal SRS, RRS, EAS, ESS: bit;
+  signal SRH, RRH, EAH, ESH: bit;
+
+begin
+  -------------------------------------------------------------------------------------------------------
+  -- Sequencial block Control Unit
+
+  ESTADO_ATUAL: process (RESET,CLOCK) is
+  begin
+    if (RESET = '1') then
+      present_state <= RESTART;
+    elsif (rising_edge(CLOCK)) then
+      WL(0) <= '1' when (turn_out = 16) else '0';
+      WL(1) <= '1' when (health = "00000000") else '0';
+      turn_out <= turn_out + 1;
+      if (turn_out = "10000") then present_state <= ENTERPRISE;
+      else turn <= bit_vector(turn_out+1);
+      end if;
+      present_state <= next_state;
+    end if;
+  end process ESTADO_ATUAL;
+  -------------------------------------------------------------------------------------------------------
+  -- Sequencial block Data Flow
+
+  DATA_FLOW: process (RESET,CLOCK) is
+    begin
+      if (falling_edge(CLOCK)) then
+
+      end if;
+    end process DATA_FLOW;
+  -------------------------------------------------------------------------------------------------------
+  -- Comb function block Next State
+
+  next_state <=
+    START      when (present_state = RESTART) and (RESET = '0') else
+
+    ENTERPRISE when (present_state = START) else
+    START      when (present_state = START) and (damage < "00100000") else
+    GAME       when (present_state = START) else
+
+    ENTERPRISE when (present_state = GAME) and (health = "00000000") else
+    GAME       when (present_state = GAME) else
+
+    ENTERPRISE when (present_state = ENTERPRISE) and (RESET = '0') else
+    RESTART;
+-------------------------------------------------------------------------------------------------------
+-- Comb function block Out
+-- configurar estado game -----------------------------------------------------------------------------
+-- calculo de damage
+
+--R_SHIELD: adderSaturated8 port map (CLOCK,SRS,RRS,EAS,regen,reg_shield);
+--SUB: entity work.decrementerSaturated8 port map (CLOCK,SET,RESET,enableSub,parallel_sub,parallel_out);
+
+REGEN <= "10000" when present_state = START else
+		 "00010" when (present_state = GAME) and (SHIELD < "10000000");
+
+SRS <= '1' when present_state = START else '0';
+SRH <= '1' when present_state = START else '0';
+
+end architecture behavioral;
+-----------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------
+------------------------------------------------------------
+--! @file Projeto 2.vhd
+--! @brief Star Trek PANIC
+--! @author João Pedro Dionizio Calazans (13673086)
+--! @date 2023-06-23
+------------------------------------------------------------
+library ieee;
+use ieee.numeric_bit.all;
+
+entity adderSaturated8 is
+    port (
+      clock, set, reset: in bit;				-- Controle global: clock, set e reset (síncrono)
+      enableAdd: 	  in bit;					-- Se 1, conteúdo do registrador é somado a parallel_add (síncrono)
+      parallel_add: in  bit_vector(8 downto 0); -- Entrada a ser somada (inteiro COM sinal): -256 a +255
+      parallel_out: out bit_vector(7 downto 0)	-- Conteúdo do registrador: 8 bits, representando 0 a 255
+    );
+  end entity;
+  
+  architecture arch of adderSaturated8 is
+    signal internal: signed(9 downto 0); -- 10 bits com sinal: captura valores entre -512 e 511 na soma
+    signal extIn: signed(9 downto 0); -- entrada convertida para 10 bits
+    signal preOut: bit_vector(9 downto 0);  -- pré-saida: internal convertido para bit_vector
+  begin
+    extIn <= signed(parallel_add(8) and parallel_add); -- extensão de sinal
+    
+    process(clock, reset)
+    begin
+      if (rising_edge(clock)) then
+        if set = '1' then						  -- set síncrono
+           internal <= (9|8 => '0', others=>'1'); -- Carrega 255 no registrador
+        elsif reset = '1' then				 -- reset síncrono
+           internal <= (others=>'0'); 		 -- Carrega 0s no registrador
+        elsif enableAdd = '1' then			 -- add síncrono
+           -- Resultado fica na faixa entre -256 (se parallel_add = -256 e internal = 0) 
+           -- e 510 (se parallel_add = 255 e internal = 255)
+           if    (internal + extIn < 0)   then internal <= "0000000000"; -- negativo: satura em 0
+           elsif (internal + extIn > 255) then internal <= "0011111111"; -- positivo 255+: satura em 255
+           else                                internal <= internal + extIn; -- entre 0 e 255
+           end if; 
+        end if;
+      end if;
+    end process;
+    
+    preOut <= bit_vector(internal);
+    parallel_out <= preOut(7 downto 0);
+  end architecture;
+
+entity StartTrekFD is
+    port (
+      clock, reset: in bit;	                      -- Sinais de controle globais
+      SRS, SRH, RRS, RRH, EAS, EAH: in bit;	      -- Sinais de controle da UC
+      s_adder, h_adder: in bit_vector(8 downto 0); -- Sinais de controle da UC
+      shield, health: out bit_vector(7 downto 0);  -- Sinais de controle externo
+      shieldsOFF, endGame: out bit	              -- Sinais de controle para UC
+    );
+  end entity;
+
+architecture dataflow of StartTrekFD is
+    component adderSaturated8 is
+        port (
+          clock, set, reset: in bit;
+          enableAdd: 	  in bit;
+          parallel_add: in  bit_vector(8 downto 0);
+          parallel_out: out bit_vector(7 downto 0)
+        );
+    end component;
+
+  signal shield_out, health_out: bit_vector(7 downto 0);
+
+begin
+    A_SHIELD: adderSaturated8 port map (clock, SRS, RRS, EAS, s_adder, shield_out);
+    A_HEALTH: adderSaturated8 port map (clock, SRH, RRH, EAH, h_adder, health_out);
+    shield <= shield_out;
+    health <= health_out;
+    shieldsOFF <= '1' when shield < "10000000" else
+                  '0' when reset = '1';
+    endGame <= '1' when health = "00000000" else '0';
+
+end architecture;
+
+-------------------------------------------------------------------------------------------------------------
+library ieee;
+use ieee.numeric_bit.all;
+
+entity StartTrekUC is
+  port (
+    clock, reset: in bit;	                      -- Sinais de controle globais
+    damage, shield: in bit_vector(7 downto 0);    -- Sinais de controle externo
+    shieldsOFF, endGame: in bit;	              -- Sinais de controle FD
+    WL: out bit_vector(1 downto 0);               -- Sinais de controle externo
+    TURN: out bit_vector(4 downto 0);             -- Sinal de saída externo: CURRENT TURN
+    SRS, SRH, RRS, RRH, EAS, EAH: out bit;	      -- Sinais de controle para FD
+    s_adder, h_adder: out bit_vector(8 downto 0)  -- Sinais de controle para FD
+  );
+end entity;
+
+architecture fsm of StartTrekUC is
+    type state_type is (RESTART,START,GAME,ENTERPRISE); -- Control Unit states
+    signal present_state, next_state : state_type; -- C. Unit signals
+    signal turn_out : signed(4 downto 0); -- current turn calculos
+    signal regen: bit_vector(7 downto 0); -- shields regeneration
+    signal shield_adder, health_adder: signed(8 downto 0); -- shields regeneration
+
+begin
+ESTADO_ATUAL: process (RESET,CLOCK) is
+    begin
+      if (RESET = '1') then
+        present_state <= RESTART;
+        turn_out <= "00001";
+      elsif (rising_edge(CLOCK)) then
+        WL(0) <= '1' when (turn_out = "10000") and present_state = ENTERPRISE else '0';
+        WL(1) <= '1' when (endGame = '1') and present_state = ENTERPRISE else '0';
+        turn_out <= turn_out + 1;
+        if (turn_out = "10000") then present_state <= ENTERPRISE;
+        else turn <= bit_vector(turn_out);
+        end if;
+        present_state <= next_state;
+      end if;
+    end process ESTADO_ATUAL;
+
+  -------------------------------------------------------------------------------------------------------
+  -- Comb function block Next State
+
+  next_state <=
+    START      when (present_state = RESTART) and (RESET = '0') else -- NEW MATCH
+    START      when (present_state = START) and (damage < "00100000") else -- CONSIDERATE FIRST DAMAGE ONLY > 32
+    GAME       when (present_state = START) else
+    ENTERPRISE when (present_state = GAME) and (endGame = '1') else -- NO LIFE REMANING
+    GAME       when (present_state = GAME) else -- ROUND HAPPENING
+    RESTART; -- WAITING FOR NEW MATCH
+
+  -------------------------------------------------------------------------------------------------------
+  -- Comb function block Out
+
+    REGEN <= "00010000" when present_state = START else
+		     "00000010" when (present_state = GAME) and (shieldsOFF = '1');
+
+    shield_adder <= signed(regen) - signed(damage);
+    shield_adder <= "001000101";
+    health_adder <= signed(shield) + signed(regen) - signed(damage) when shield_adder < "000000000" else "000000000";
+    s_adder <= bit_vector(shield_adder);
+    h_adder <=  bit_vector(health_adder);
+    
+
+    SRS <= '1' when present_state = START else '0'; -- NEW MATCH
+    SRH <= '1' when present_state = START else '0'; -- NEW MATCH
+    RRS <= '1' when present_state = RESTART else '0'; -- RESET WHILE WAITING FOR A NEW MATCH
+    RRH <= '1' when present_state = RESTART else '0'; -- RESET WHILE WAITING FOR A NEW MATCH
+    EAS <= '1' when present_state = GAME else '0';
+    EAH <= '1' when present_state = GAME else '0';
+  ------------------------------------------------------------------------------------------------------
+
+end architecture;
+
+library ieee;
+use ieee.numeric_bit.all;
+
+entity StartTrekAssault is
+	port (
+		clock, reset: in bit; -- sinais de controle globais
+		damage: in bit_vector(7 downto 0); -- Entrada de dados: dano
+		shield: out bit_vector(7 downto 0); -- Saída: shield atual
+		health: out bit_vector(7 downto 0); -- Saída: health atual
+		turn: out bit_vector(4 downto 0); -- Saída: rodada atual
+		WL: out bit_vector(1 downto 0) -- Saída: vitória e/ou derrota
+	);
+end entity;
+
+architecture behavioral of StartTrekAssault is
+  -------------------------------------------------------------------------------------------------------
+  -- Sequencial block Data Flow
+
+  component StartTrekFD is
+    port (
+      clock, reset: in bit;
+      SRS, SRH, RRS, RRH, EAS, EAH: in bit;
+      s_adder, h_adder: in bit_vector(8 downto 0);
+      shield, health: out bit_vector(7 downto 0);
+      shieldsOFF, endGame: out bit
+    );
+  end component;
+
+  -------------------------------------------------------------------------------------------------------
+  -- Sequencial block Control Unit
+
+  component StartTrekUC is
+    port (
+    clock, reset: in bit;	                      -- Sinais de controle globais
+    damage, shield: in bit_vector(7 downto 0);    -- Sinais de controle externo
+    shieldsOFF, endGame: in bit;	              -- Sinais de controle FD
+    WL: out bit_vector(1 downto 0);               -- Sinais de controle externo
+    TURN: out bit_vector(4 downto 0);             -- Sinal de saída externo: CURRENT TURN
+    SRS, SRH, RRS, RRH, EAS, EAH: out bit;	      -- Sinais de controle para FD
+    s_adder, h_adder: out bit_vector(8 downto 0) -- Sinais de controle para FD
+  );
+  end component;
+
+  -------------------------------------------------------------------------------------------------------
+  -- aux variables
+
+  signal clock_n, shieldsOFF, endGame: bit;
+  signal SRS, SRH, RRS, RRH, EAS, EAH: bit;
+  signal s_adder, h_adder: bit_vector(8 downto 0);
+
+  -------------------------------------------------------------------------------------------------------
+
+begin
+  clock_n <= not(clock);
+  fd: StartTrekFD
+    port map (clock, reset, SRS, SRH, RRS, RRH, EAS, EAH, s_adder, h_adder, shield, health, shieldsOFF, endGame);
+  uc: StartTrekUC
+    port map (clock, reset, damage, shield, shieldsOFF, endGame, WL, TURN, SRS, SRH, RRS, RRH, EAS, EAH, s_adder, h_adder);
+
+end architecture behavioral;
+------------------------------------------------------------
+--! @file Projeto 2.vhd
+--! @brief Star Trek PANIC
+--! @author João Pedro Dionizio Calazans (13673086)
+--! @date 2023-06-23
+------------------------------------------------------------
+library ieee;
+use ieee.numeric_bit.all;
+
+-- Registrador de 8 bits capaz de somar seu conteúdo à entrada. Satura-se em 0-255
+entity adderSaturated8 is
+  port (
+    clock, set, reset: in bit;					-- Controle global: clock, set e reset (síncrono)
+	enableAdd: 	  in bit;						-- Se 1, conteúdo do registrador é somado a parallel_add (síncrono)
+    parallel_add: in  bit_vector(8 downto 0);   -- Entrada a ser somada (inteiro COM sinal): -256 a +255
+    parallel_out: out bit_vector(7 downto 0)	-- Conteúdo do registrador: 8 bits, representando 0 a 255
+  );
+end entity;
+
+architecture arch of adderSaturated8 is
+  signal internal: signed(9 downto 0); -- 10 bits com sinal: captura valores entre -512 e 511 na soma
+  signal extIn: signed(9 downto 0); -- entrada convertida para 10 bits
+  signal preOut: bit_vector(9 downto 0);  -- pré-saida: internal convertido para bit_vector
+begin
+  extIn <= signed(parallel_add(8) & parallel_add); -- extensão de sinal
+  
+  process(clock, reset)
+  begin
+    if (rising_edge(clock)) then
+      if set = '1' then						  -- set síncrono
+         internal <= (9|8 => '0', others=>'1'); -- Carrega 255 no registrador
+	  elsif reset = '1' then				 -- reset síncrono
+		 internal <= (others=>'0'); 		 -- Carrega 0s no registrador
+	  elsif enableAdd = '1' then			 -- add síncrono
+         -- Resultado fica na faixa entre -256 (se parallel_add = -256 e internal = 0) 
+         -- e 510 (se parallel_add = 255 e internal = 255)
+         if    (internal + extIn < 0)   then internal <= "0000000000"; -- negativo: satura em 0
+         elsif (internal + extIn > 255) then internal <= "0011111111"; -- positivo 255+: satura em 255
+         else                                internal <= internal + extIn; -- entre 0 e 255
+         end if; 
+      end if;
+    end if;
+  end process;
+  
+  preOut <= bit_vector(internal);
+  parallel_out <= preOut(7 downto 0);
+end architecture;
+--------------------------------------------------------------------------------------------------------------
+
+library ieee;
+use ieee.numeric_bit.all;
+
+entity StartTrekFD is
+    port (
+      clock, reset: in bit;	                      -- Sinais de controle globais
+      SRS, SRH, RRS, RRH, EAS, EAH: in bit;	      -- Sinais de controle da UC
+      s_adder, h_adder: in bit_vector(8 downto 0); -- Sinais de controle da UC
+      shield, health: out bit_vector(7 downto 0);  -- Sinais de controle externo
+      endGame: out bit	              -- Sinais de controle para UC
+    );
+  end entity;
+
+architecture dataflow of StartTrekFD is
+    component adderSaturated8 is
+        port (
+          clock, set, reset: in bit;
+          enableAdd: 	  in bit;
+          parallel_add: in  bit_vector(8 downto 0);
+          parallel_out: out bit_vector(7 downto 0)
+        );
+    end component;
+
+  signal shield_register, health_register: bit_vector(7 downto 0);
+
+begin
+    ADD_SHIELD: adderSaturated8 port map (clock, SRS, RRS, EAS, s_adder, shield_register);
+    ADD_HEALTH: adderSaturated8 port map (clock, SRH, RRH, EAH, h_adder, health_register);
+    shield <= shield_register;
+    health <= health_register;
+
+    endGame <= '1' when health = "00000000" else '0';
+
+end architecture;
+
+library ieee;
+use ieee.numeric_bit.all;
+
+entity StartTrekUC is
+  port (
+    clock, reset: in bit;	                      -- Sinais de controle globais
+    damage, shield: in bit_vector(7 downto 0);    -- Sinais de controle externo
+    endGame: in bit;	              -- Sinais de controle FD
+    WL: out bit_vector(1 downto 0);               -- Sinais de controle externo
+    TURN: out bit_vector(4 downto 0);             -- Sinal de saída externo: CURRENT TURN
+    SRS, SRH, RRS, RRH, EAS, EAH: out bit;	      -- Sinais de controle para FD
+    s_adder, h_adder: out bit_vector(8 downto 0)  -- Sinais de controle para FD
+  );
+end entity;
+
+architecture fsm of StartTrekUC is
+    type state_type is (RESTART,START,GAME,ENTERPRISE); -- Control Unit states
+    signal present_state, next_state : state_type; -- C. Unit signals
+    signal turn_out : signed(4 downto 0); -- current turn calculos
+    signal regen: bit_vector(7 downto 0); -- shields regeneration
+    signal shield_adder, health_adder: signed(8 downto 0); -- shields regeneration
+
+begin
+ESTADO_ATUAL: process (RESET,CLOCK) is
+    begin
+      if (RESET = '1') then
+        present_state <= RESTART;
+        turn_out <= "00001";
+        turn <= "00000";
+      elsif (rising_edge(CLOCK)) then
+        if (turn_out = "10000") then present_state <= ENTERPRISE; end if;
+        if (next_state /= ENTERPRISE) then
+        	turn <= bit_vector(turn_out);
+        	turn_out <= turn_out + 1;
+        end if;
+        present_state <= next_state;
+      end if;
+    end process ESTADO_ATUAL;
+
+  -------------------------------------------------------------------------------------------------------
+  -- Comb function block Next State
+
+  next_state <=
+    START      when (present_state = RESTART) and (RESET = '0') else -- NEW MATCH
+    START      when (present_state = START) and (damage < "00100000") else -- CONSIDERATE FIRST DAMAGE ONLY > 32
+    GAME       when (present_state = START) else
+    ENTERPRISE when (present_state = GAME) and (endGame = '1') else -- NO LIFE REMANING
+    GAME       when (present_state = GAME) else -- ROUND HAPPENING
+    ENTERPRISE when (present_state = ENTERPRISE) and (RESET = '0') else -- ENDGAME
+    RESTART; -- WAITING FOR NEW MATCH
+
+  -------------------------------------------------------------------------------------------------------
+  -- Comb function block Out
+
+    REGEN <= "00010000" when present_state = RESTART else
+		     "00000010" when (present_state = GAME) and shield < "10000000";
+
+    shield_adder <= signed('0' & regen) - signed('0' & damage);
+    health_adder <= signed('0' & shield) + shield_adder when (shield_adder < "000000000") else "000000000";
+    s_adder <= bit_vector(shield_adder);
+    h_adder <=  bit_vector(health_adder);
+    
+
+    SRS <= '1' when present_state = START else '0'; -- NEW MATCH
+    SRH <= '1' when present_state = START else '0'; -- NEW MATCH
+    RRS <= '1' when present_state = RESTART else '0'; -- RESET WHILE WAITING FOR A NEW MATCH
+    RRH <= '1' when present_state = RESTART else '0'; -- RESET WHILE WAITING FOR A NEW MATCH
+    EAS <= '1' when present_state = GAME else '0';
+    EAH <= '1' when present_state = GAME else '0'; --when (shield_adder < "000000000") else '0';
+    WL(0) <= '1' when (turn = "10000") and present_state = ENTERPRISE else '0';
+    WL(1) <= '1' when (endGame = '1') and present_state = ENTERPRISE else '0';
+  ------------------------------------------------------------------------------------------------------
+
+end architecture;
+
+library ieee;
+use ieee.numeric_bit.all;
+
+entity StartTrekAssault is
+	port (
+		clock, reset: in bit; -- sinais de controle globais
+		damage: in bit_vector(7 downto 0); -- Entrada de dados: dano
+		shield: out bit_vector(7 downto 0); -- Saída: shield atual
+		health: out bit_vector(7 downto 0); -- Saída: health atual
+		turn: out bit_vector(4 downto 0); -- Saída: rodada atual
+		WL: out bit_vector(1 downto 0) -- Saída: vitória e/ou derrota
+	);
+end entity;
+
+architecture behavioral of StartTrekAssault is
+  -------------------------------------------------------------------------------------------------------
+  -- Sequencial block Data Flow
+
+  component StartTrekFD is
+    port (
+      clock, reset: in bit;
+      SRS, SRH, RRS, RRH, EAS, EAH: in bit;
+      s_adder, h_adder: in bit_vector(8 downto 0);
+      shield, health: out bit_vector(7 downto 0);
+      endGame: out bit
+    ); 
+  end component;
+
+  -------------------------------------------------------------------------------------------------------
+  -- Sequencial block Control Unit
+
+  component StartTrekUC is
+    port (
+    clock, reset: in bit;	                      -- Sinais de controle globais
+    damage, shield: in bit_vector(7 downto 0);    -- Sinais de controle externo
+    endGame: in bit;	              -- Sinais de controle FD
+    WL: out bit_vector(1 downto 0);               -- Sinais de controle externo
+    TURN: out bit_vector(4 downto 0);             -- Sinal de saída externo: CURRENT TURN
+    SRS, SRH, RRS, RRH, EAS, EAH: out bit;	      -- Sinais de controle para FD
+    s_adder, h_adder: out bit_vector(8 downto 0) -- Sinais de controle para FD
+  );
+  end component;
+
+  -------------------------------------------------------------------------------------------------------
+  -- aux variables
+
+  signal clock_n, endGame: bit;
+  signal SRS, SRH, RRS, RRH, EAS, EAH: bit;
+  signal s_adder, h_adder: bit_vector(8 downto 0);
+
+  -------------------------------------------------------------------------------------------------------
+
+begin
+  clock_n <= not(clock);
+  fd: StartTrekFD
+    port map (clock_n, reset, SRS, SRH, RRS, RRH, EAS, EAH, s_adder, h_adder, shield, health, endGame);
+  uc: StartTrekUC
+    port map (clock, reset, damage, shield, endGame, WL, TURN, SRS, SRH, RRS, RRH, EAS, EAH, s_adder, h_adder);
+
+  --shield <= "01000101";
+
+end architecture behavioral;

@@ -1,0 +1,26 @@
+--Atividade 03
+entity hamming is
+port (
+	entrada: in bit_vector (13 downto 1);
+	dados: out bit_vector (8 downto 0));
+end hamming;
+
+architecture correction of hamming is
+    signal error: bit_vector(3 downto 0);
+begin --posicao do erro
+	error(0) <= entrada(3) xor entrada(5) xor entrada(7) xor entrada(9) xor entrada(11) xor entrada(13) xor entrada(1);
+    error(1) <= entrada(3) xor entrada(6) xor entrada(7) xor entrada(10) xor entrada(11) xor entrada(2);
+    error(2) <= entrada(5) xor entrada(6) xor entrada(7) xor entrada(12) xor entrada(13) xor entrada(4);
+    error(3) <= entrada(9) xor entrada(10) xor entrada(11) xor entrada(12) xor entrada(13) xor entrada(8);
+    
+--corrigindo
+	dados(8) <= not entrada(13) when error = "1101" else entrada(13);
+    dados(7) <= not entrada(12) when error = "1100" else entrada(12);
+	dados(6) <= not entrada(11) when error = "1011" else entrada(11);
+    dados(5) <= not entrada(10) when error = "1010" else entrada(10);
+    dados(4) <= not entrada(9) when error = "1001" else entrada(9);
+	dados(3) <= not entrada(7) when error = "0111" else entrada(7);
+    dados(2) <= not entrada(6) when error = "0110" else entrada(6);
+    dados(1) <= not entrada(5) when error = "0101" else entrada(5);
+	dados(0) <= not entrada(3) when error = "0011" else entrada(3);
+end correction;

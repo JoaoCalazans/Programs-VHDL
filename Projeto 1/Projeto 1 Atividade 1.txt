@@ -1,0 +1,25 @@
+--Atividade 01
+entity JogoDaVelha is --conforme fornecido no enunciado
+port (
+	a1, a2, a3: in bit_vector (1 downto 0);
+	b1, b2, b3: in bit_vector (1 downto 0);
+	c1, c2, c3: in bit_vector (1 downto 0);
+	z: out bit_vector (1 downto 0));
+end JogoDaVelha;
+
+architecture winner of JogoDaVelha is --vetores auxiliares
+    signal linA, linB, linC: bit_vector (1 downto 0);
+    signal col1, col2, col3: bit_vector (1 downto 0);
+    signal diaPri, diaSec: bit_vector (1 downto 0);
+begin --os vetores inteiros verificam SE e as coordenadas QUEM [GANHOU]
+	linA <= a1 and a2 and a3; --linhas A, B e C
+    linB <= b1 and b2 and b3;
+    linC <= c1 and c2 and c3;
+    col1 <= a1 and b1 and c1; --colunas 1, 2 e 3
+    col2 <= a2 and b2 and c2;
+    col3 <= a3 and b3 and c3;
+    diaPri <= a1 and b2 and c3; --diagonais principal e secundaria
+    diaSec <= c1 and b2 and a3;
+    z(0) <= linA(0) or linB(0) or linC(0) or col1(0) or col2(0) or col3(0) or diaPri(0) or diaSec(0);
+    z(1) <= linA(1) or linB(1) or linC(1) or col1(1) or col2(1) or col3(1) or diaPri(1) or diaSec(1);
+end winner;
