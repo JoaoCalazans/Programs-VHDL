@@ -3,6 +3,7 @@
 --! @brief N-bit counter (0 to N-1)
 --! @author João P. Calazans (joao.calazans@usp.br)
 --! @date 2023-09-23
+-- avaiable on EDA throw: https://www.edaplayground.com/x/s38W
 -------------------------------------------------------
 
 library ieee;
