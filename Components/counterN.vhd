@@ -28,11 +28,11 @@ architecture simple of counterN is
 begin
   process(clock, reset)
   begin
-    if reset = '1' then
-      internal <= (others => '0');
-      rco <= '0';
-    elsif (rising_edge(clock)) then
-      if count = '1' then
+    if (rising_edge(clock)) then
+      if reset = '1' then
+        internal <= (others => '0');
+        rco <= '0';
+      elsif count = '1' then
 		    if (internal = s_end) then
 			    rco <= '1';
 		    else
