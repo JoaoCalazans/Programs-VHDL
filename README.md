@@ -1,4 +1,4 @@
-# Programas-VHDL
+# Programs-VHDL
 [Metric - Dark Saturday](https://www.youtube.com/watch?v=lVn2UM8-sKI)
 
 This repository contains a collection of VHDL Components and previous (mine and others) projects, based on both PCS3115 & PCS3225 disciplines contend.
