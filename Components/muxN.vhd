@@ -10,7 +10,7 @@
 -- where all of them are N bit module -> X = {xN-1, xN-2, xN-3, ..., x1, x0}
 -- (lowercase X stands for vector coordenate).
 -- They are controlled by the signal SEL:
-
+ 
 -- |  when SEL = 0    |    when SEL = 1  |
 -- |     X = A        |       X = B      |
 -- |     Y = A        |       Y = B      |
