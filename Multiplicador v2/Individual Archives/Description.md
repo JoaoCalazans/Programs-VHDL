@@ -1,1 +1,1 @@
-The exact same projecto but on individual archives.
+The exact same project but on individual archives.
