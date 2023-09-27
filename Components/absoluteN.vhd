@@ -24,7 +24,7 @@ end entity;
 architecture comportamental of absN is
   signal internal: signed(N-1 downto 0) := v_in;
 begin
-  v_out <= abs(internal);
+  v_out <= bit_vector(abs(internal));
 end architecture;
 
 -----------------------------------------------------------------------------------
