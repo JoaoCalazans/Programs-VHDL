@@ -30,7 +30,7 @@ end architecture;
 -----------------------------------------------------------------------------------
 -- instrumental
 architecture instrumental of absN is
-    signal internal: signed(N-1 downto 0) := v_in;
+    signal internal: bit_vector(N-1 downto 0) := v_in;
 begin
   internal <= not(v_in) when v_in(N-1) = '1' else
               internal - 1;
