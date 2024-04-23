@@ -16,7 +16,7 @@ entity counterN is
   port (
     clock, reset: in bit;
 	count:        in bit;
-	rco: 	      out bit;
+	rco:          out bit;
 	cval:         out bit_vector(N-1 downto 0)
   );
 end entity;
