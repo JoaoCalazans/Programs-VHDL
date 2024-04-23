@@ -27,20 +27,20 @@ architecture arch_reg of regshiftN is
 begin
   process(clock)
   begin
-    if (rising_edge(clock)) then
-      if reset = '1' then
-        internal <= (others=>'0');
-      elsif load_sync = '1' then
-        if (M > N) then
-            internal <= internal(M-1 downto N) & parallel_in(N-1 downto 0);
-        elsif (N > M) then
-            internal <= parallel_in(M-1 downto 0); -- LSBs
-        else
-            internal <= parallel_in;
-        end if;
-      elsif shiftRight = '1' then -- notice it only shift when load = 0
-        internal <= shiftBit & internal(M-1 downto 1);
-      end if;
+    if reset = '1' then
+      internal <= (others=>'0');
+    elsif rising_edge(clock) then
+        if (load_sync = '1') then
+            if (M > N) then
+                internal <= internal(M-1 downto N) & parallel_in(N-1 downto 0);
+            elsif (N > M) then
+                internal <= parallel_in(M-1 downto 0); -- LSBs
+            else
+                internal <= parallel_in;
+            end if;
+         elsif shiftRight = '1' then -- notice it only shift when load = 0
+             internal <= shiftBit & internal(M-1 downto 1);
+         end if;
     end if;
   end process;
   parallel_out <= internal;
