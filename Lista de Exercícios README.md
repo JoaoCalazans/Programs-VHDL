@@ -1,4 +1,4 @@
-# Header para a lista de exercícios, conforme apresentado no arquivo original em $\LaTeX$:
+# Header para a [lista de exercícios](https://github.com/JoaoCalazans/Programs-VHDL/blob/main/Lista_de_exerc%C3%ADcios_SD1_2024.pdf), conforme apresentado no arquivo original em $\LaTeX$:
 
 *******
 
